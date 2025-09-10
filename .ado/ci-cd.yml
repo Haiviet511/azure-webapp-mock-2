@@ -9,7 +9,6 @@ pool:
 variables:
   azureSubscription: "haipv25-svc"
   webAppName: "haipv25-webapp"
-  resourceGroup: "rg_fsa_f1_csm_ec_huutn"
 
 stages:
   # --- Build stage ---
@@ -17,26 +16,86 @@ stages:
     jobs:
       - job: MavenBuild
         steps:
+          # Cache Maven dependencies
+          - task: Cache@2
+            displayName: "Cache Maven packages"
+            inputs:
+              key: 'maven | "$(Agent.OS)" | **/pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: ~/.m2/repository
+
+          # Run Maven build + unit/integration tests
           - task: Maven@4
+            displayName: "Maven Clean Verify"
             inputs:
-              mavenPomFile: "src/webapp/pom.xml"
-              goals: "clean package -DskipTests"
+              mavenPomFile: "pom.xml"
+              goals: "clean verify"
+
+          - task: Maven@4
+            displayName: "Run Security Scan (OWASP)"
+            inputs:
+              mavenPomFile: "pom.xml"
+              goals: "org.owasp:dependency-check-maven:check"
+
+          # Publish artifacts
           - task: PublishBuildArtifacts@1
+            displayName: "Publish JAR Artifact"
             inputs:
-              PathtoPublish: "src/webapp/target/*.jar"
+              PathtoPublish: "src/webapp/target"
               ArtifactName: "drop"
 
-  # --- Deploy stage ---
-  - stage: Deploy
+  # --- Deploy to Dev ---
+  - stage: Deploy_Dev
+    dependsOn: Build
     jobs:
-      - deployment: BlueGreen
-        environment: production
+      - deployment: DeployDev
+        environment: "dev"
         strategy:
           runOnce:
             deploy:
               steps:
                 - task: AzureWebApp@1
+                  displayName: "Deploy to Dev Slot"
                   inputs:
                     azureSubscription: $(azureSubscription)
                     appName: $(webAppName)
-                    package: "$(Pipeline.Workspace)/drop/*.jar"
+                    slotName: "dev"
+                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
+
+  # --- Deploy to Staging ---
+  - stage: Deploy_Staging
+    dependsOn: Build
+    jobs:
+      - deployment: DeployStaging
+        environment: "staging"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebApp@1
+                  displayName: "Deploy to Staging Slot"
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    appName: $(webAppName)
+                    slotName: "staging"
+                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
+
+  # --- Deploy to Prod ---
+  - stage: Deploy_Prod
+    dependsOn:
+      - Deploy_Dev
+      - Deploy_Staging
+    jobs:
+      - deployment: DeployProd
+        environment: "production" # require approval
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebApp@1
+                  displayName: "Deploy to Prod"
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    appName: $(webAppName)
+                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
