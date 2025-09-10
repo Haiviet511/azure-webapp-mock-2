@@ -1,7 +1,8 @@
 package com.example.webapp.controller;
 
-import com.example.common_dataaccess.entity.Category;
-import com.example.common_dataaccess.repository.CategoryRepository;
+import com.example.common.entity.Category;
+import com.example.common.repository.CategoryRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,11 +11,8 @@ import java.util.List;
 @RequestMapping("/api/categories")
 public class CategoryController {
 
-    private final CategoryRepository repo;
-
-    public CategoryController(CategoryRepository repo) {
-        this.repo = repo;
-    }
+    @Autowired
+    private CategoryRepository repo;
 
     @GetMapping
     public List<Category> getAll() {

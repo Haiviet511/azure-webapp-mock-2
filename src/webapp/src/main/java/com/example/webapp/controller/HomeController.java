@@ -1,7 +1,7 @@
 package com.example.webapp.controller;
 
-import com.example.common_dataaccess.repository.CategoryRepository;
-import com.example.common_dataaccess.repository.ProductRepository;
+import com.example.common.repository.ProductRepository;
+import com.example.common.repository.CategoryRepository;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,18 +19,18 @@ public class HomeController {
 
     @GetMapping("/")
     public String index() {
-        return "index";
+        return "index"; // index.html
     }
 
     @GetMapping("/products-list")
-    public String productsList(Model model) {
+    public String productList(Model model) {
         model.addAttribute("productList", productRepo.findAll());
-        return "products";
+        return "products"; // products.html
     }
 
     @GetMapping("/categories-list")
-    public String categoriesList(Model model) {
+    public String categoryList(Model model) {
         model.addAttribute("categoryList", categoryRepo.findAll());
-        return "categories";
+        return "categories"; // categories.html (bạn phải tạo thêm)
     }
 }
