@@ -4,11 +4,13 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.example</groupId>
-    <artifactId>prj_app_mock</artifactId>
-    <version>1.0.0</version>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.2.5</version>
+    <relativePath/>
   </parent>
 
+  <groupId>com.example</groupId>
   <artifactId>webapp</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
@@ -59,14 +61,9 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-        <version>${spring-boot.version}</version>
-        <executions>
-          <execution>
-            <goals>
-              <goal>repackage</goal>
-            </goals>
-          </execution>
-        </executions>
+        <configuration>
+          <mainClass>com.example.webapp.WebAppApplication</mainClass>
+        </configuration>
       </plugin>
 
       <plugin>
