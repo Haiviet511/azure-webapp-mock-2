@@ -1,7 +1,7 @@
-package com.example.prj_app_mock.controller;
+package com.example.webapp.controller;
 
-import com.example.prj_app_mock.entity.Product;
-import com.example.prj_app_mock.repository.ProductRepository;
+import com.example.common.entity.Product;
+import com.example.common.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 

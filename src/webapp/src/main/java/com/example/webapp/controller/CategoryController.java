@@ -1,7 +1,7 @@
-package com.example.prj_app_mock.controller;
+package com.example.webapp.controller;
 
-import com.example.prj_app_mock.entity.Category;
-import com.example.prj_app_mock.repository.CategoryRepository;
+import com.example.common.entity.Category;
+import com.example.common.repository.CategoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 

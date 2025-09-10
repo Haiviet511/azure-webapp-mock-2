@@ -1,4 +1,4 @@
-package com.example.prj_app_mock.entity;
+package com.example.common.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;

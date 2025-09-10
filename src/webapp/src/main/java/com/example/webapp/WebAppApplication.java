@@ -1,11 +1,11 @@
-package com.example.azurewebapp;
+package com.example.webapp;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class AzureWebappApplication {
+public class WebAppApplication {
     public static void main(String[] args) {
-        SpringApplication.run(AzureWebappApplication.class, args);
+        SpringApplication.run(WebAppApplication.class, args);
     }
 }
