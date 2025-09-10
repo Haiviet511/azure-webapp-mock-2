@@ -1,8 +1,7 @@
 package com.example.webapp.controller;
 
-import com.example.common.entity.Product;
-import com.example.common.repository.ProductRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.common_dataaccess.entity.Product;
+import com.example.common_dataaccess.repository.ProductRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,8 +10,11 @@ import java.util.List;
 @RequestMapping("/api/products")
 public class ProductController {
 
-    @Autowired
-    private ProductRepository repo;
+    private final ProductRepository repo;
+
+    public ProductController(ProductRepository repo) {
+        this.repo = repo;
+    }
 
     @GetMapping
     public List<Product> getAll() {
