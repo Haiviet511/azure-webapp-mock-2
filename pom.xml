@@ -38,6 +38,27 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
             </plugin>
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.1.3</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <nvdApiKey>${nvd.api.key}</nvdApiKey>
+                    <updateInterval>7</updateInterval>
+                    <analyzeDependencies>true</analyzeDependencies>
+                    <analyzeRuntimeDependencies>true</analyzeRuntimeDependencies>
+                    <analyzeProvidedDependencies>false</analyzeProvidedDependencies>
+                    <analyzeTestDependencies>false</analyzeTestDependencies>
+                    <suppressionFile>dependency-check-suppression.xml</suppressionFile>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

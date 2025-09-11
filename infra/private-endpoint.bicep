@@ -1,16 +1,19 @@
+param location string
 param sqlServerName string
 param sqlResourceId string
 param vnetName string
 param subnetName string
-param location string = resourceGroup().location
 
 resource pe 'Microsoft.Network/privateEndpoints@2023-05-01' = {
-  name: 'pe-${sqlServerName}'
+  name: '${sqlServerName}-pe'
   location: location
   properties: {
+    subnet: {
+      id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, subnetName)
+    }
     privateLinkServiceConnections: [
       {
-        name: '${sqlServerName}-sql-conn'
+        name: '${sqlServerName}-plsc'
         properties: {
           privateLinkServiceId: sqlResourceId
           groupIds: [
@@ -19,8 +22,5 @@ resource pe 'Microsoft.Network/privateEndpoints@2023-05-01' = {
         }
       }
     ]
-    subnet: {
-      id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, subnetName)
-    }
   }
 }

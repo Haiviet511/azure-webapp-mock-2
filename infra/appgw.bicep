@@ -1,33 +1,64 @@
-param appGwName string = 'agw-haipv25'
-param vnetName string = 'vnet-haipv25'
-param appGwSubnetName string = 'appgw-subnet'
-param location string = resourceGroup().location
-param backendFqdns array = []
+param appGwName string
+param location string
+param vnetName string
+param appGwSubnetName string
+param backendFqdns array
+param wafPolicyResourceId string
 param probePath string = '/'
 
-resource pip 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
+var defaultFqdn = length(backendFqdns) > 0 ? backendFqdns[length(backendFqdns) - 1] : ''
+
+var probes = [for fqdn in backendFqdns: {
+  name: 'probe-${replace(fqdn, '.', '-')}'
+  properties: {
+    protocol: 'Http'
+    host: fqdn
+    path: probePath
+    interval: 30
+    timeout: 30
+    unhealthyThreshold: 3
+    pickHostNameFromBackendHttpSettings: false
+    match: { statusCodes: [ '200-399' ] }
+  }
+}]
+
+var pools = [for fqdn in backendFqdns: {
+  name: 'pool-${replace(fqdn, '.', '-')}'
+  properties: { backendAddresses: [ { fqdn: fqdn } ] }
+}]
+
+var settings = [for fqdn in backendFqdns: {
+  name: 'bhs-${replace(fqdn, '.', '-')}'
+  properties: {
+    port: 80
+    protocol: 'Http'
+    cookieBasedAffinity: 'Disabled'
+    pickHostNameFromBackendAddress: true
+    probe: {
+      id: resourceId('Microsoft.Network/applicationGateways/probes', appGwName, 'probe-${replace(fqdn, '.', '-')}')
+    }
+    requestTimeout: 30
+  }
+}]
+
+resource publicIP 'Microsoft.Network/publicIPAddresses@2023-05-01' = {
   name: '${appGwName}-pip'
   location: location
-  sku: {
-    name: 'Standard'
-    tier: 'Regional'
-  }
-  properties: {
-    publicIPAllocationMethod: 'Static'
-  }
+  sku: { name: 'Standard' }
+  properties: { publicIPAllocationMethod: 'Static' }
 }
 
-resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
+resource appGw 'Microsoft.Network/applicationGateways@2022-09-01' = {
   name: appGwName
   location: location
-  sku: {
-    name: 'WAF_v2'
-    tier: 'WAF_v2'
-  }
   properties: {
-    autoscaleConfiguration: {
-      minCapacity: 1
-      maxCapacity: 2
+    sku: {
+      name: 'WAF_v2'
+      tier: 'WAF_v2'
+      capacity: 2
+    }
+    firewallPolicy: empty(wafPolicyResourceId) ? null : {
+      id: wafPolicyResourceId
     }
     gatewayIPConfigurations: [
       {
@@ -42,108 +73,86 @@ resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
     frontendIPConfigurations: [
       {
         name: 'appGwFrontendIP'
-        properties: {
-          publicIPAddress: {
-            id: pip.id
-          }
-        }
+        properties: { publicIPAddress: { id: publicIP.id } }
       }
     ]
     frontendPorts: [
-      {
-        name: 'port80'
-        properties: {
-          port: 80
-        }
-      }
-      {
-        name: 'port443'
-        properties: {
-          port: 443
-        }
-      }
+      { name: 'httpPort',  properties: { port: 80  } }
+      { name: 'httpsPort', properties: { port: 443 } }
     ]
-    probes: [
-      {
-        name: 'probe-backends'
-        properties: {
-          protocol: 'Https'
-          path: probePath
-          interval: 30
-          timeout: 30
-          unhealthyThreshold: 3
-          pickHostNameFromBackendHttpSettings: true
-          minServers: 0
-          port: 443
-        }
-      }
-    ]
+    probes: probes
+    backendAddressPools: pools
+    backendHttpSettingsCollection: settings
     httpListeners: [
       {
-        name: 'listener-80'
+        name: 'listener-http'
         properties: {
           frontendIPConfiguration: {
             id: resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', appGwName, 'appGwFrontendIP')
           }
           frontendPort: {
-            id: resourceId('Microsoft.Network/applicationGateways/frontendPorts', appGwName, 'port80')
+            id: resourceId('Microsoft.Network/applicationGateways/frontendPorts', appGwName, 'httpPort')
           }
           protocol: 'Http'
+          requireServerNameIndication: false
         }
       }
     ]
-    backendAddressPools: [
+    urlPathMaps: [
       {
-        name: 'defaultPool'
+        name: 'pathMap-http'
         properties: {
-          backendAddresses: [
-            for f in backendFqdns: {
-              fqdn: string(f)
-            }
-          ]
-        }
-      }
-    ]
-    backendHttpSettingsCollection: [
-      {
-        name: 'defaultHttpsSettings'
-        properties: {
-          port: 443
-          protocol: 'Https'
-          cookieBasedAffinity: 'Disabled'
-          requestTimeout: 30
-          pickHostNameFromBackendAddress: true
-          probe: {
-            id: resourceId('Microsoft.Network/applicationGateways/probes', appGwName, 'probe-backends')
+          defaultBackendAddressPool: {
+            id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', appGwName, 'pool-${replace(defaultFqdn, '.', '-')}')
           }
+          defaultBackendHttpSettings: {
+            id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'bhs-${replace(defaultFqdn, '.', '-')}')
+          }
+          pathRules: concat(
+            length(backendFqdns) > 0 ? [{
+              name: 'rule-dev'
+              properties: {
+                paths: [ '/dev/*' ]
+                backendAddressPool: {
+                  id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', appGwName, 'pool-${replace(backendFqdns[0], '.', '-')}')
+                }
+                backendHttpSettings: {
+                  id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'bhs-${replace(backendFqdns[0], '.', '-')}')
+                }
+              }
+            }] : [],
+            length(backendFqdns) > 1 ? [{
+              name: 'rule-staging'
+              properties: {
+                paths: [ '/staging/*' ]
+                backendAddressPool: {
+                  id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', appGwName, 'pool-${replace(backendFqdns[1], '.', '-')}')
+                }
+                backendHttpSettings: {
+                  id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'bhs-${replace(backendFqdns[1], '.', '-')}')
+                }
+              }
+            }] : []
+          )
         }
       }
     ]
     requestRoutingRules: [
       {
-        name: 'rule1'
+        name: 'rule-http-pathbased'
         properties: {
-          ruleType: 'Basic'
+          priority: 100
+          ruleType: 'PathBasedRouting'
           httpListener: {
-            id: resourceId('Microsoft.Network/applicationGateways/httpListeners', appGwName, 'listener-80')
+            id: resourceId('Microsoft.Network/applicationGateways/httpListeners', appGwName, 'listener-http')
           }
-          backendAddressPool: {
-            id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', appGwName, 'defaultPool')
-          }
-          backendHttpSettings: {
-            id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'defaultHttpsSettings')
+          urlPathMap: {
+            id: resourceId('Microsoft.Network/applicationGateways/urlPathMaps', appGwName, 'pathMap-http')
           }
         }
       }
     ]
-    webApplicationFirewallConfiguration: {
-      enabled: true
-      firewallMode: 'Detection' // theo yêu cầu bài
-      ruleSetType: 'OWASP'
-      ruleSetVersion: '3.2'
-    }
   }
 }
 
-output appGwName string = appgw.name
-output appGwPublicIP string = pip.properties.ipAddress
+output appGwId string = appGw.id

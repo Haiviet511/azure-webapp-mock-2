@@ -1,5 +1,5 @@
-param appInsightsName string = 'appi-haipv25'
-param location string = resourceGroup().location
+param location string
+param appInsightsName string
 
 resource appi 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
@@ -12,6 +12,4 @@ resource appi 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-output appInsightsName string = appi.name
-output instrumentationKey string = appi.properties.InstrumentationKey
-output connectionString string = appi.properties.ConnectionString
+output appInsightsId string = appi.id

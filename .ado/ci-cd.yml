@@ -3,99 +3,160 @@ trigger:
     include:
       - main
 
-pool:
-  name: "Default"
-
 variables:
-  azureSubscription: "haipv25-svc"
-  webAppName: "haipv25-webapp"
+  - group: SecurityKeys
+
+  - name: azureSubscription
+    value: haipv25-svc
+
+  - name: resourceGroup
+    value: rg_fsa_f1_csm_ec_huutn
+
+  - name: location
+    value: southeastasia
+
+  - name: appDev
+    value: haipv25-webapp-dev
+
+  - name: appStg
+    value: haipv25-webapp-stg
+
+  - name: appProd
+    value: haipv25-webapp
+
+  - name: artifactName
+    value: drop
+
+  - name: mavenPom
+    value: pom.xml
+
+  - name: mavenTargetDir
+    value: src/webapp/target
 
 stages:
-  # --- Build stage ---
+  # ====== STAGE 1: INFRA ======
+  - stage: Infra
+    displayName: Deploy Infrastructure
+    jobs:
+      - job: DeployInfra
+        pool:
+          name: "Default"
+        steps:
+          - checkout: self
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: Deploy Infra (Bicep)
+            inputs:
+              deploymentScope: "Resource Group"
+              azureResourceManagerConnection: "$(azureSubscription)"
+              subscriptionId: "788f2671-c295-4d6e-b5b6-b1535aafefef"
+              action: "Create Or Update Resource Group"
+              resourceGroupName: "$(resourceGroup)"
+              location: "$(location)"
+              templateLocation: "Linked artifact"
+              csmFile: "infra/main.bicep"
+              deploymentName: "appgwDeployment_$(Build.BuildId)"
+
+  # ====== STAGE 2: BUILD ======
   - stage: Build
+    displayName: Build & Test
     jobs:
       - job: MavenBuild
+        pool:
+          name: "Default"
         steps:
-          # Cache Maven dependencies
+          - checkout: self
           - task: Cache@2
-            displayName: "Cache Maven packages"
+            displayName: Cache Maven repo
             inputs:
               key: 'maven | "$(Agent.OS)" | **/pom.xml'
               restoreKeys: |
                 maven | "$(Agent.OS)"
               path: ~/.m2/repository
-
-          # Run Maven build + unit/integration tests
           - task: Maven@4
-            displayName: "Maven Clean Verify"
+            displayName: Build & Unit Test
             inputs:
-              mavenPomFile: "pom.xml"
+              mavenPomFile: "$(mavenPom)"
               goals: "clean verify"
-
           - task: Maven@4
-            displayName: "Run Security Scan (OWASP)"
+            displayName: Security Scan (OWASP)
             inputs:
-              mavenPomFile: "pom.xml"
+              mavenPomFile: "$(mavenPom)"
               goals: "org.owasp:dependency-check-maven:check"
-
-          # Publish artifacts
+              options: "-Xmx4g -Dnvd.apiKey=$(NVD_API_KEY)"
+            env:
+              NVD_API_KEY: $(nvd.api.key)
           - task: PublishBuildArtifacts@1
-            displayName: "Publish JAR Artifact"
+            displayName: Publish Artifact
             inputs:
-              PathtoPublish: "src/webapp/target"
-              ArtifactName: "drop"
+              PathtoPublish: "$(mavenTargetDir)"
+              ArtifactName: "$(artifactName)"
 
-  # --- Deploy to Dev ---
+  # ====== STAGE 3: DEPLOY DEV (Rolling) ======
   - stage: Deploy_Dev
-    dependsOn: Build
+    displayName: Deploy to Dev (Rolling)
+    dependsOn:
+      - Infra
+      - Build
     jobs:
       - deployment: DeployDev
-        environment: "dev"
+        environment: dev
         strategy:
           runOnce:
             deploy:
               steps:
                 - task: AzureWebApp@1
-                  displayName: "Deploy to Dev Slot"
+                  displayName: Deploy Dev
                   inputs:
                     azureSubscription: $(azureSubscription)
-                    appName: $(webAppName)
-                    slotName: "dev"
-                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
+                    appName: $(appDev)
+                    package: "$(Pipeline.Workspace)/$(artifactName)/*.jar"
 
-  # --- Deploy to Staging ---
+  # ====== STAGE 4: DEPLOY STAGING (Canary) ======
   - stage: Deploy_Staging
-    dependsOn: Build
+    displayName: Deploy to Staging (Canary)
+    dependsOn:
+      - Infra
+      - Build
     jobs:
       - deployment: DeployStaging
-        environment: "staging"
+        environment: staging
         strategy:
-          runOnce:
+          canary:
+            increments: [10, 50, 99]
             deploy:
               steps:
                 - task: AzureWebApp@1
-                  displayName: "Deploy to Staging Slot"
+                  displayName: Deploy Staging Canary
                   inputs:
                     azureSubscription: $(azureSubscription)
-                    appName: $(webAppName)
-                    slotName: "staging"
-                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
+                    appName: $(appStg)
+                    package: "$(Pipeline.Workspace)/$(artifactName)/*.jar"
 
-  # --- Deploy to Prod ---
+  # ====== STAGE 5: DEPLOY PROD (Blue-Green) ======
   - stage: Deploy_Prod
+    displayName: Deploy to Prod (Blue-Green)
     dependsOn:
       - Deploy_Dev
       - Deploy_Staging
     jobs:
       - deployment: DeployProd
-        environment: "production" # require approval
+        environment: production
         strategy:
           runOnce:
             deploy:
               steps:
                 - task: AzureWebApp@1
-                  displayName: "Deploy to Prod"
+                  displayName: Deploy to Staging Slot
                   inputs:
                     azureSubscription: $(azureSubscription)
-                    appName: $(webAppName)
-                    package: "$(Pipeline.Workspace)/drop/webapp-1.0.0.jar"
+                    appName: $(appProd)
+                    slotName: staging
+                    package: "$(Pipeline.Workspace)/$(artifactName)/*.jar"
+
+                - task: AzureCLI@2
+                  displayName: Swap Slot to Prod
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    scriptType: ps
+                    scriptLocation: inlineScript
+                    inlineScript: az webapp deployment slot swap -g $(resourceGroup) -n $(appProd) --slot staging --target-slot production

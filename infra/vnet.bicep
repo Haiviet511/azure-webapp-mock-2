@@ -1,35 +1,45 @@
-param vnetName string = 'vnet-haipv25'
-param location string = resourceGroup().location
+param location string
+param vnetName string
+param defaultSubnetName string
+param appGwSubnetName string
+param nsgName string
 
-resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
   name: vnetName
   location: location
   properties: {
     addressSpace: {
       addressPrefixes: [
-        '10.1.0.0/16'
+        '10.0.0.0/16'
       ]
     }
     subnets: [
       {
-        name: 'default'
+        name: defaultSubnetName
         properties: {
-          addressPrefix: '10.1.0.0/24'
+          addressPrefix: '10.0.0.0/24'
+          networkSecurityGroup: {
+            id: resourceId('Microsoft.Network/networkSecurityGroups', nsgName)
+          }
+          delegations: [
+            {
+              name: 'appServiceDelegation'
+              properties: {
+                serviceName: 'Microsoft.Web/serverFarms'
+              }
+            }
+          ]
         }
       }
       {
-        name: 'appgw-subnet'
+        name: appGwSubnetName
         properties: {
-          addressPrefix: '10.1.1.0/24'
+          addressPrefix: '10.0.1.0/24'
+          networkSecurityGroup: {
+            id: resourceId('Microsoft.Network/networkSecurityGroups', nsgName)
+          }
         }
       }
     ]
   }
 }
-
-output vnetName string = vnet.name
-output vnetId string = vnet.id
-output defaultSubnetName string = 'default'
-output appGwSubnetName string = 'appgw-subnet'
-output defaultSubnetId string = '${vnet.id}/subnets/default'
-output appGwSubnetId string = '${vnet.id}/subnets/appgw-subnet'

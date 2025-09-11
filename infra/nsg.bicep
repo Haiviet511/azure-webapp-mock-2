@@ -1,39 +1,41 @@
-param nsgName string = 'nsg-haipv25'
-param location string = resourceGroup().location
+param nsgName string
+param location string
 
-resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
+resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = {
   name: nsgName
   location: location
   properties: {
     securityRules: [
       {
-        name: 'AllowHTTP'
+        name: 'Allow-AppGW-Infrastructure-Inbound'
         properties: {
           priority: 100
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
           sourcePortRange: '*'
-          destinationPortRange: '80'
-          sourceAddressPrefix: '*'
           destinationAddressPrefix: '*'
+          destinationPortRanges: [ '65200-65535' ]
+          description: 'Required for Application Gateway v2 infrastructure'
         }
       }
+
       {
-        name: 'AllowHTTPS'
+        name: 'Allow-HTTP-HTTPS'
         properties: {
-          priority: 200
+          priority: 110
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
           sourcePortRange: '*'
-          destinationPortRange: '443'
-          sourceAddressPrefix: '*'
           destinationAddressPrefix: '*'
+          destinationPortRanges: [ '80', '443' ]
+          description: 'Allow web traffic to listeners'
         }
       }
+
     ]
   }
 }
-
-output nsgId string = nsg.id
