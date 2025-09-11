@@ -28,5 +28,8 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 }
 
 output vnetName string = vnet.name
-output defaultSubnet string = 'default'
-output appgwSubnet string = 'appgw-subnet'
+output vnetId string = vnet.id
+output defaultSubnetName string = 'default'
+output appGwSubnetName string = 'appgw-subnet'
+output defaultSubnetId string = '${vnet.id}/subnets/default'
+output appGwSubnetId string = '${vnet.id}/subnets/appgw-subnet'

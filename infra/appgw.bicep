@@ -2,8 +2,9 @@ param appGwName string = 'agw-haipv25'
 param vnetName string = 'vnet-haipv25'
 param appGwSubnetName string = 'appgw-subnet'
 param location string = resourceGroup().location
+param backendFqdns array = []
+param probePath string = '/'
 
-// Public IP
 resource pip 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: '${appGwName}-pip'
   location: location
@@ -16,7 +17,6 @@ resource pip 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   }
 }
 
-// Application Gateway with WAF_v2
 resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
   name: appGwName
   location: location
@@ -63,6 +63,21 @@ resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
         }
       }
     ]
+    probes: [
+      {
+        name: 'probe-backends'
+        properties: {
+          protocol: 'Https'
+          path: probePath
+          interval: 30
+          timeout: 30
+          unhealthyThreshold: 3
+          pickHostNameFromBackendHttpSettings: true
+          minServers: 0
+          port: 443
+        }
+      }
+    ]
     httpListeners: [
       {
         name: 'listener-80'
@@ -81,18 +96,26 @@ resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
       {
         name: 'defaultPool'
         properties: {
-          backendAddresses: []
+          backendAddresses: [
+            for f in backendFqdns: {
+              fqdn: string(f)
+            }
+          ]
         }
       }
     ]
     backendHttpSettingsCollection: [
       {
-        name: 'defaultHttpSettings'
+        name: 'defaultHttpsSettings'
         properties: {
-          port: 80
-          protocol: 'Http'
+          port: 443
+          protocol: 'Https'
           cookieBasedAffinity: 'Disabled'
           requestTimeout: 30
+          pickHostNameFromBackendAddress: true
+          probe: {
+            id: resourceId('Microsoft.Network/applicationGateways/probes', appGwName, 'probe-backends')
+          }
         }
       }
     ]
@@ -108,14 +131,14 @@ resource appgw 'Microsoft.Network/applicationGateways@2023-09-01' = {
             id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', appGwName, 'defaultPool')
           }
           backendHttpSettings: {
-            id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'defaultHttpSettings')
+            id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', appGwName, 'defaultHttpsSettings')
           }
         }
       }
     ]
     webApplicationFirewallConfiguration: {
       enabled: true
-      firewallMode: 'Prevention'
+      firewallMode: 'Detection' // theo yêu cầu bài
       ruleSetType: 'OWASP'
       ruleSetVersion: '3.2'
     }
